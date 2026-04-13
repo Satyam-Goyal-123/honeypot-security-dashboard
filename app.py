@@ -1,218 +1,279 @@
-from flask import Flask
+from flask import Flask, jsonify
 from analyzer import analyze_logs
 from geo import get_location
 
 app = Flask(__name__)
 
-@app.route("/")
-def home():
+# 🔥 API for live updates
+@app.route("/data")
+def data():
     real_data, fake_data, suspicious, time_series = analyze_logs()
 
     all_ips = list(set(real_data.keys()) | set(fake_data.keys()))
     real_values = [real_data.get(ip, 0) for ip in all_ips]
     fake_values = [fake_data.get(ip, 0) for ip in all_ips]
 
-    # 🌍 GEO LOCATIONS
     locations = {}
-    for ip in real_data.keys():
+    for ip in real_data:
         loc = get_location(ip)
         if loc:
             locations[ip] = loc
 
-    # 📈 TIME DATA
-    time_labels = list(time_series.keys())
-    time_values = list(time_series.values())
+    top_attackers = sorted(real_data.items(), key=lambda x: x[1], reverse=True)[:3]
 
-    html = f"""
-    <html>
-    <head>
-        <title>Honeypot SOC Dashboard</title>
+    return jsonify({
+        "ips": all_ips,
+        "real": real_values,
+        "fake": fake_values,
+        "time_labels": list(time_series.keys()),
+        "time_values": list(time_series.values()),
+        "suspicious": suspicious,
+        "locations": locations,
+        "top": top_attackers,
+        "rate": sum(time_series.values())
+    })
 
-        <!-- Fonts -->
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 
-        <!-- Chart.js -->
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+# 🔥 MAIN UI
+@app.route("/")
+def home():
+    return """
+<html>
+<head>
+<title>SOC Dashboard</title>
 
-        <!-- Leaflet -->
-        <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-        <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 
-        <style>
-            body {{
-                margin: 0;
-                font-family: 'Inter', sans-serif;
-                background: #020617;
-                color: #e2e8f0;
-            }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-            h1 {{
-                text-align: center;
-                margin: 30px 0;
-                font-weight: 600;
-            }}
+<style>
 
-            .container {{
-                max-width: 1200px;
-                margin: auto;
-                padding: 20px;
-            }}
+/* 🌌 Animated Background */
+body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    color: #e5e7eb;
+    background: linear-gradient(-45deg, #020617, #020617, #020617, #0f172a);
+    background-size: 400% 400%;
+    animation: gradientMove 15s ease infinite;
+}
 
-            .grid-2 {{
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 20px;
-                margin-bottom: 20px;
-            }}
+@keyframes gradientMove {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
 
-            .grid-1 {{
-                margin-bottom: 20px;
-            }}
+/* Title */
+h1 {
+    text-align: center;
+    font-size: 22px;
+    margin: 30px 0;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
 
-            .card {{
-                background: #0f172a;
-                padding: 20px;
-                border-radius: 12px;
-                border: 1px solid #1e293b;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            }}
+/* Layout */
+.container {
+    max-width: 1100px;
+    margin: auto;
+    padding: 20px;
+}
 
-            .card h3 {{
-                margin-bottom: 15px;
-                font-weight: 500;
-            }}
+/* Grid */
+.grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
 
-            .danger {{
-                color: #ef4444;
-                font-weight: bold;
-            }}
+/* 🧊 Glass Cards */
+.card {
+    background: rgba(17, 24, 39, 0.6);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 14px;
+    padding: 20px;
+    transition: all 0.3s ease;
+}
 
-            canvas {{
-                max-height: 300px;
-            }}
+/* Hover */
+.card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(255,255,255,0.1);
+}
 
-            #map {{
-                height: 350px;
-                border-radius: 10px;
-                overflow: hidden;
-            }}
+/* Headings */
+.card h3 {
+    font-size: 13px;
+    color: #9ca3af;
+    margin-bottom: 12px;
+    font-weight: 500;
+}
 
-            @media (max-width: 768px) {{
-                .grid-2 {{
-                    grid-template-columns: 1fr;
-                }}
-            }}
-        </style>
-    </head>
+/* Values */
+.value {
+    font-size: 20px;
+    font-weight: 600;
+}
 
-    <body>
+/* Alert */
+.alert {
+    text-align: center;
+    padding: 12px;
+    font-size: 13px;
+    margin-bottom: 15px;
+    transition: all 0.3s ease;
+}
 
-        <h1>🛡️ Honeypot SOC Dashboard</h1>
+/* Charts */
+canvas {
+    max-height: 250px;
+}
 
-        <div class="container">
+/* Map */
+#map {
+    height: 300px;
+    border-radius: 12px;
+    overflow: hidden;
+}
 
-            <!-- Row 1 -->
-            <div class="grid-2">
-                <div class="card">
-                    <h3>🔴 Real Attackers</h3>
-                    {"".join(f"<div>{ip} → {count}</div>" for ip,count in real_data.items())}
-                </div>
+/* Subtext */
+.small {
+    font-size: 13px;
+    color: #9ca3af;
+}
 
-                <div class="card">
-                    <h3>🔵 Simulated Attackers</h3>
-                    {"".join(f"<div>{ip} → {count}</div>" for ip,count in fake_data.items())}
-                </div>
-            </div>
+/* Fade-in animation */
+.fade {
+    animation: fadeIn 0.6s ease forwards;
+}
 
-            <!-- Row 2 -->
-            <div class="grid-1">
-                <div class="card">
-                    <h3>⚠ Suspicious Activity</h3>
-                    { "".join(f"<div class='danger'>⚠ {ip} (Brute Force)</div>" for ip in suspicious) if suspicious else "<div>No threats detected</div>" }
-                </div>
-            </div>
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
 
-            <!-- Row 3 -->
-            <div class="grid-2">
-                <div class="card">
-                    <h3>📊 Attack Chart</h3>
-                    <canvas id="chart"></canvas>
-                </div>
+/* Responsive */
+@media (max-width: 768px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+}
 
-                <div class="card">
-                    <h3>📈 Time Activity</h3>
-                    <canvas id="timeChart"></canvas>
-                </div>
-            </div>
+</style>
+</head>
 
-            <!-- Row 4 -->
-            <div class="grid-1">
-                <div class="card">
-                    <h3>🌍 Attacker Map</h3>
-                    <div id="map"></div>
-                </div>
-            </div>
+<body>
 
+<h1 class="fade">Honeypot Security Dashboard</h1>
+
+<div id="alertBox" class="alert fade"></div>
+
+<div class="container">
+
+    <div class="grid">
+        <div class="card fade">
+            <h3>Top Attackers</h3>
+            <div id="top" class="value"></div>
         </div>
 
-        <script>
-            const labels = {all_ips};
-            const real_values = {real_values};
-            const fake_values = {fake_values};
+        <div class="card fade">
+            <h3>Attack Rate</h3>
+            <div id="rate" class="value"></div>
+        </div>
+    </div>
 
-            new Chart(document.getElementById('chart'), {{
-                type: 'bar',
-                data: {{
-                    labels: labels,
-                    datasets: [
-                        {{
-                            label: 'Real Attacks',
-                            data: real_values,
-                            backgroundColor: '#ef4444'
-                        }},
-                        {{
-                            label: 'Simulated Attacks',
-                            data: fake_values,
-                            backgroundColor: '#3b82f6'
-                        }}
-                    ]
-                }}
-            }});
+    <div class="grid">
+        <div class="card fade">
+            <h3>Attack Distribution</h3>
+            <canvas id="chart"></canvas>
+        </div>
 
-            // TIME GRAPH
-            new Chart(document.getElementById('timeChart'), {{
-                type: 'line',
-                data: {{
-                    labels: {time_labels},
-                    datasets: [{{
-                        label: 'Attacks over Time',
-                        data: {time_values},
-                        borderColor: '#22c55e',
-                        fill: false
-                    }}]
-                }}
-            }});
+        <div class="card fade">
+            <h3>Activity Timeline</h3>
+            <canvas id="timeChart"></canvas>
+        </div>
+    </div>
 
-            // MAP
-            const map = L.map('map').setView([20, 0], 2);
+    <div class="card fade">
+        <h3>Geolocation Map</h3>
+        <div id="map"></div>
+    </div>
 
-            L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png').addTo(map);
+</div>
 
-            const locations = {locations};
+<script>
 
-            for (let ip in locations) {{
-                let loc = locations[ip];
-                L.marker([loc.lat, loc.lon])
-                    .addTo(map)
-                    .bindPopup(ip + " - " + loc.city + ", " + loc.country);
-            }}
-        </script>
+let chart = new Chart(document.getElementById("chart"), {
+    type:'bar',
+    data:{labels:[],datasets:[
+        {label:'Real',data:[],backgroundColor:'#f87171'},
+        {label:'Fake',data:[],backgroundColor:'#60a5fa'}
+    ]}
+});
 
-    </body>
-    </html>
-    """
+let timeChart = new Chart(document.getElementById("timeChart"), {
+    type:'line',
+    data:{labels:[],datasets:[
+        {label:'Activity',data:[],borderColor:'#34d399'}
+    ]}
+});
 
-    return html
+let map = L.map('map').setView([20,0],2);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+async function update(){
+    const res = await fetch("/data");
+    const d = await res.json();
+
+    chart.data.labels = d.ips;
+    chart.data.datasets[0].data = d.real;
+    chart.data.datasets[1].data = d.fake;
+    chart.update();
+
+    timeChart.data.labels = d.time_labels;
+    timeChart.data.datasets[0].data = d.time_values;
+    timeChart.update();
+
+    let alert = document.getElementById("alertBox");
+    if(d.suspicious.length){
+        alert.innerHTML = "⚠ Active Threat Detected";
+        alert.style.color = "#f87171";
+    } else {
+        alert.innerHTML = "System Operating Normally";
+        alert.style.color = "#34d399";
+    }
+
+    let topHTML = "";
+    d.top.forEach(x=>{
+        topHTML += `<div class="small">${x[0]} — ${x[1]} attempts</div>`;
+    });
+    document.getElementById("top").innerHTML = topHTML;
+
+    document.getElementById("rate").innerHTML = d.rate + " events";
+
+    map.eachLayer(l=>{
+        if(l instanceof L.Marker) map.removeLayer(l);
+    });
+
+    for(let ip in d.locations){
+        let loc = d.locations[ip];
+        L.marker([loc.lat,loc.lon]).addTo(map).bindPopup(ip);
+    }
+}
+
+setInterval(update,2000);
+update();
+
+</script>
+
+</body>
+</html>
+"""
 
 
 if __name__ == "__main__":
