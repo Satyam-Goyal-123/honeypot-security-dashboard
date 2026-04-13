@@ -34,18 +34,29 @@ while True:
 
     print(f"[!] Connection from {ip}:{port}")
 
+    # Set a timeout so we don't stall on idle malicious connections
+    client.settimeout(5.0)
+
     try:
         client.sendall(b"Fake SSH Service\nUsername: ")
 
-        data = client.recv(1024).strip()   # 🔥 FIX HERE
+        # Safely read data with a timeout
+        raw_data = client.recv(1024).strip()
+        
+        # Safely decode ignoring bad bytes
+        data_str = raw_data.decode(errors='ignore') if raw_data else "<empty>"
+        
+        print(f"[DATA] {data_str}")
 
-        print(f"[DATA] {data}")
-
-        log_attack(ip, port, data + tag + b"\n")  # 🔥 FIX HERE
+        # tag is bytes, so we encode our strings to form the final byte string
+        log_payload = raw_data + tag + b"\n" if raw_data else b"<empty>" + tag + b"\n"
+        log_attack(ip, port, log_payload)
 
         client.sendall(b"Login Failed\n")
 
+    except socket.timeout:
+        print(f"[-] Connection timed out for {ip}")
     except Exception as e:
-        print("Error:", e)
-
-    client.close()
+        print(f"[-] Error with {ip}:", e)
+    finally:
+        client.close()
