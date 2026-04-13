@@ -1,153 +1,158 @@
 from flask import Flask
 from analyzer import analyze_logs
+from geo import get_location
 
 app = Flask(__name__)
 
 @app.route("/")
 def home():
-    real_data, fake_data = analyze_logs()
+    real_data, fake_data, suspicious, time_series = analyze_logs()
 
     all_ips = list(set(real_data.keys()) | set(fake_data.keys()))
-
     real_values = [real_data.get(ip, 0) for ip in all_ips]
     fake_values = [fake_data.get(ip, 0) for ip in all_ips]
 
-    total_attacks = sum(real_values) + sum(fake_values)
-    total_real = sum(real_values)
-    total_fake = sum(fake_values)
+    # 🌍 GEO LOCATIONS
+    locations = {}
+    for ip in real_data.keys():
+        loc = get_location(ip)
+        if loc:
+            locations[ip] = loc
 
-    alert = "🚨 LIVE ATTACK DETECTED!" if total_real > 0 else "System Monitoring..."
+    # 📈 TIME DATA
+    time_labels = list(time_series.keys())
+    time_values = list(time_series.values())
 
     html = f"""
     <html>
     <head>
         <title>Honeypot SOC Dashboard</title>
+
+        <!-- Fonts -->
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+        <!-- Chart.js -->
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+        <!-- Leaflet -->
+        <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+        <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
         <style>
             body {{
                 margin: 0;
-                font-family: 'Segoe UI', sans-serif;
+                font-family: 'Inter', sans-serif;
                 background: #020617;
                 color: #e2e8f0;
             }}
 
             h1 {{
                 text-align: center;
-                margin: 15px;
-                color: #38bdf8;
+                margin: 30px 0;
+                font-weight: 600;
             }}
 
-            .alert {{
-                text-align: center;
-                padding: 10px;
-                background: {'#ef4444' if total_real > 0 else '#1e293b'};
-                font-weight: bold;
-                letter-spacing: 1px;
+            .container {{
+                max-width: 1200px;
+                margin: auto;
+                padding: 20px;
             }}
 
-            .grid {{
+            .grid-2 {{
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                grid-template-columns: 1fr 1fr;
                 gap: 20px;
-                width: 90%;
-                margin: 20px auto;
+                margin-bottom: 20px;
+            }}
+
+            .grid-1 {{
+                margin-bottom: 20px;
             }}
 
             .card {{
                 background: #0f172a;
                 padding: 20px;
                 border-radius: 12px;
-                box-shadow: 0 0 15px rgba(0,0,0,0.7);
+                border: 1px solid #1e293b;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
             }}
 
-            .stat {{
-                font-size: 28px;
+            .card h3 {{
+                margin-bottom: 15px;
+                font-weight: 500;
+            }}
+
+            .danger {{
+                color: #ef4444;
                 font-weight: bold;
             }}
 
-            .real {{ color: #ef4444; }}
-            .fake {{ color: #3b82f6; }}
-            .total {{ color: #22c55e; }}
-
-            .feed {{
-                max-height: 200px;
-                overflow-y: auto;
-            }}
-
-            .feed div {{
-                padding: 6px;
-                margin: 4px 0;
-                background: #1e293b;
-                border-left: 4px solid #38bdf8;
-            }}
-
             canvas {{
-                margin-top: 20px;
+                max-height: 300px;
+            }}
+
+            #map {{
+                height: 350px;
+                border-radius: 10px;
+                overflow: hidden;
+            }}
+
+            @media (max-width: 768px) {{
+                .grid-2 {{
+                    grid-template-columns: 1fr;
+                }}
             }}
         </style>
     </head>
 
     <body>
 
-        <h1>Honeypot SOC Dashboard</h1>
+        <h1>🛡️ Honeypot SOC Dashboard</h1>
 
-        <div class="alert">{alert}</div>
+        <div class="container">
 
-        <div class="grid">
-            <div class="card">
-                <h3>Total Attacks</h3>
-                <div class="stat total">{total_attacks}</div>
-            </div>
-
-            <div class="card">
-                <h3>Real Attacks</h3>
-                <div class="stat real">{total_real}</div>
-            </div>
-
-            <div class="card">
-                <h3>Simulated Attacks</h3>
-                <div class="stat fake">{total_fake}</div>
-            </div>
-        </div>
-
-        <div class="grid">
-
-            <div class="card">
-                <h3>🔴 Real Attack Feed</h3>
-                <div class="feed">
-    """
-
-    for ip, count in real_data.items():
-        html += f"<div>⚠ {ip} → {count} attempts</div>"
-
-    html += """
+            <!-- Row 1 -->
+            <div class="grid-2">
+                <div class="card">
+                    <h3>🔴 Real Attackers</h3>
+                    {"".join(f"<div>{ip} → {count}</div>" for ip,count in real_data.items())}
                 </div>
-            </div>
-    """
 
-    html += """
-            <div class="card">
-                <h3>🔵 Simulated Attack Feed</h3>
-                <div class="feed">
-    """
-
-    for ip, count in fake_data.items():
-        html += f"<div>{ip} → {count}</div>"
-
-    html += """
+                <div class="card">
+                    <h3>🔵 Simulated Attackers</h3>
+                    {"".join(f"<div>{ip} → {count}</div>" for ip,count in fake_data.items())}
                 </div>
             </div>
 
-        </div>
-    """
-
-    html += f"""
-        <div class="grid">
-            <div class="card">
-                <h3>📊 Attack Analytics</h3>
-                <canvas id="chart"></canvas>
+            <!-- Row 2 -->
+            <div class="grid-1">
+                <div class="card">
+                    <h3>⚠ Suspicious Activity</h3>
+                    { "".join(f"<div class='danger'>⚠ {ip} (Brute Force)</div>" for ip in suspicious) if suspicious else "<div>No threats detected</div>" }
+                </div>
             </div>
+
+            <!-- Row 3 -->
+            <div class="grid-2">
+                <div class="card">
+                    <h3>📊 Attack Chart</h3>
+                    <canvas id="chart"></canvas>
+                </div>
+
+                <div class="card">
+                    <h3>📈 Time Activity</h3>
+                    <canvas id="timeChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Row 4 -->
+            <div class="grid-1">
+                <div class="card">
+                    <h3>🌍 Attacker Map</h3>
+                    <div id="map"></div>
+                </div>
+            </div>
+
         </div>
 
         <script>
@@ -155,9 +160,7 @@ def home():
             const real_values = {real_values};
             const fake_values = {fake_values};
 
-            const ctx = document.getElementById('chart').getContext('2d');
-
-            new Chart(ctx, {{
+            new Chart(document.getElementById('chart'), {{
                 type: 'bar',
                 data: {{
                     labels: labels,
@@ -165,36 +168,44 @@ def home():
                         {{
                             label: 'Real Attacks',
                             data: real_values,
-                            backgroundColor: 'rgba(239,68,68,0.8)'
+                            backgroundColor: '#ef4444'
                         }},
                         {{
                             label: 'Simulated Attacks',
                             data: fake_values,
-                            backgroundColor: 'rgba(59,130,246,0.8)'
+                            backgroundColor: '#3b82f6'
                         }}
                     ]
-                }},
-                options: {{
-                    responsive: true,
-                    plugins: {{
-                        legend: {{
-                            labels: {{ color: '#e2e8f0' }}
-                        }}
-                    }},
-                    scales: {{
-                        x: {{
-                            ticks: {{ color: '#e2e8f0' }}
-                        }},
-                        y: {{
-                            beginAtZero: true,
-                            ticks: {{ color: '#e2e8f0' }}
-                        }}
-                    }}
                 }}
             }});
 
-            // 🔥 AUTO REFRESH EVERY 3 SECONDS
-            setTimeout(() => location.reload(), 30000);
+            // TIME GRAPH
+            new Chart(document.getElementById('timeChart'), {{
+                type: 'line',
+                data: {{
+                    labels: {time_labels},
+                    datasets: [{{
+                        label: 'Attacks over Time',
+                        data: {time_values},
+                        borderColor: '#22c55e',
+                        fill: false
+                    }}]
+                }}
+            }});
+
+            // MAP
+            const map = L.map('map').setView([20, 0], 2);
+
+            L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png').addTo(map);
+
+            const locations = {locations};
+
+            for (let ip in locations) {{
+                let loc = locations[ip];
+                L.marker([loc.lat, loc.lon])
+                    .addTo(map)
+                    .bindPopup(ip + " - " + loc.city + ", " + loc.country);
+            }}
         </script>
 
     </body>
