@@ -56,20 +56,36 @@ const timelineChart = new Chart(ctxTime, {
     type: 'line',
     data: {
         labels: [],
-        datasets: [{
-            label: 'Attack Events',
-            data: [],
-            borderColor: '#10b981',
-            backgroundColor: gradientArea,
-            borderWidth: 2,
-            tension: 0.4, // smooth curves
-            fill: true,
-            pointBackgroundColor: '#050510',
-            pointBorderColor: '#10b981',
-            pointBorderWidth: 2,
-            pointRadius: 4,
-            pointHoverRadius: 6
-        }]
+        datasets: [
+            {
+                label: 'Simulated Benchmark',
+                data: [],
+                borderColor: '#64748b', // Slate color for mock data
+                borderWidth: 2,
+                borderDash: [5, 5], // Dashed line to indicate simulated
+                tension: 0.4,
+                fill: false,
+                pointBackgroundColor: '#050510',
+                pointBorderColor: '#64748b',
+                pointBorderWidth: 2,
+                pointRadius: 3,
+                pointHoverRadius: 5
+            },
+            {
+                label: 'Live Attacks',
+                data: [],
+                borderColor: '#10b981', // Neon green for real data
+                backgroundColor: gradientArea,
+                borderWidth: 2,
+                tension: 0.4,
+                fill: true,
+                pointBackgroundColor: '#050510',
+                pointBorderColor: '#10b981',
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6
+            }
+        ]
     },
     options: {
         responsive: true,
@@ -123,7 +139,8 @@ async function updateDashboard() {
 
         // 2. Update Timeline Chart
         timelineChart.data.labels = d.time_labels;
-        timelineChart.data.datasets[0].data = d.time_values;
+        timelineChart.data.datasets[0].data = d.mock_time_values; // Simulated baseline
+        timelineChart.data.datasets[1].data = d.real_time_values; // Live data
         timelineChart.update();
 
         // 3. Update Threat Level Alert

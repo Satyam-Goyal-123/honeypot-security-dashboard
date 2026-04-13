@@ -10,22 +10,38 @@ app = Flask(__name__)
 def data():
     real_data, fake_data, suspicious, time_series = analyze_logs()
 
-    # If there's no data yet (e.g. fresh start), send some simulated/static data
-    # so the dashboard doesn't look empty and boring.
+    now = datetime.datetime.now()
+    # Generate 5 minutes of mock timeline labels and values
+    mock_labels = [(now - datetime.timedelta(minutes=i)).strftime("%Y-%m-%d %H:%M") for i in range(4, -1, -1)]
+    mock_values_fixed = [12, 45, 20, 60, 30]
+    
+    # We want to represent the timeline with both static & real data over the same labels.
+    # Start with our mock labels, then add any real labels, keep them sorted.
+    all_time_labels = sorted(list(set(mock_labels) | set(time_series.keys())))
+    
+    mock_time_values = []
+    real_time_values = []
+    for label in all_time_labels:
+        # For mock data representation, if it's one of the mock labels, assign its static value, otherwise 0
+        if label in mock_labels:
+            mock_time_values.append(mock_values_fixed[mock_labels.index(label)])
+        else:
+            mock_time_values.append(0)
+            
+        # Real data gets whatever was seen in logs
+        real_time_values.append(time_series.get(label, 0))
+
+    # Top attackers logic: if empty, show a simulated one so UI is never fully empty
+    top_attackers = sorted(real_data.items(), key=lambda x: x[1], reverse=True)[:3]
+    if not top_attackers:
+        top_attackers = [("Simulated (192.168.x.x)", 45), ("Simulated (10.0.x.x)", 22)]
+
+    # We also keep some simulated dots on the map and distribution if everything is empty
     if not real_data and not fake_data:
-        now = datetime.datetime.now()
-        # Mocking time_series for the last few minutes
-        time_series = {
-            (now - datetime.timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M"): 12,
-            (now - datetime.timedelta(minutes=4)).strftime("%Y-%m-%d %H:%M"): 45,
-            (now - datetime.timedelta(minutes=3)).strftime("%Y-%m-%d %H:%M"): 20,
-            (now - datetime.timedelta(minutes=2)).strftime("%Y-%m-%d %H:%M"): 60,
-            (now - datetime.timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M"): 30,
-        }
-        
         real_data = {"192.168.1.100": 45, "10.0.0.8": 22, "172.16.0.4": 15}
         fake_data = {"192.168.1.10": 10, "10.0.0.5": 25, "172.16.0.3": 5}
-        suspicious = ["192.168.1.100", "10.0.0.8"]
+        # Clear out suspicious array so we don't trigger the red alert for mock data
+        suspicious = []
 
     all_ips = list(set(real_data.keys()) | set(fake_data.keys()))
     real_values = [real_data.get(ip, 0) for ip in all_ips]
@@ -33,9 +49,7 @@ def data():
 
     locations = {}
     for ip in real_data:
-        # Avoid local IPs from trying to resolve via ip-api
         if ip.startswith("192.168") or ip.startswith("10.") or ip.startswith("172.16"):
-            # Mock locations for local IPs just for the visual effect
             import random
             locations[ip] = {
                 "lat": random.uniform(-60, 60), 
@@ -48,14 +62,13 @@ def data():
             if loc:
                 locations[ip] = loc
 
-    top_attackers = sorted(real_data.items(), key=lambda x: x[1], reverse=True)[:3]
-
     return jsonify({
         "ips": all_ips,
         "real": real_values,
         "fake": fake_values,
-        "time_labels": list(time_series.keys()),
-        "time_values": list(time_series.values()),
+        "time_labels": all_time_labels,
+        "mock_time_values": mock_time_values,
+        "real_time_values": real_time_values,
         "suspicious": suspicious,
         "locations": locations,
         "top": top_attackers,
@@ -69,4 +82,4 @@ def home():
     return render_template("index.html")
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    app.run(host="0.0.0.0", debug=True, port=5001)
