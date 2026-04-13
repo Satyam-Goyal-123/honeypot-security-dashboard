@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Honeypot Security Dashboard</title>
+
+    <!-- Google Fonts: Outfit & Inter for premium tech look -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js and Leaflet via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <!-- Core Styles -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+    <!-- Dynamic Alert Banner -->
+    <div id="alertBox" class="alert-banner hidden">
+        <div class="alert-content">
+            <span class="pulse-ring"></span>
+            <span id="alertMessage">System Operating Normally</span>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <!-- Header -->
+        <header class="header slide-down">
+            <h1>Nexus<span>Defend</span></h1>
+            <p class="subtitle">Real-time Honeypot Threat Analytics</p>
+        </header>
+
+        <!-- Metrics Row -->
+        <div class="grid-row metrics slide-up" style="animation-delay: 0.1s;">
+            <div class="glass-card stat-card glow-cyan">
+                <h3>Total Attack Events</h3>
+                <div class="value-large" id="rate">0</div>
+                <div class="subtext">in the last hour</div>
+            </div>
+
+            <div class="glass-card stat-card glow-emerald">
+                <h3>Top Attackers</h3>
+                <div id="top-attackers" class="top-list">
+                    <!-- Dynamic List -->
+                </div>
+            </div>
+            
+            <div class="glass-card stat-card glow-crimson">
+                <h3>Threat Level</h3>
+                <div class="value-large threat-level" id="threat-level">LOW</div>
+                <div class="subtext">Based on unusual activity spikes</div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid-row charts slide-up" style="animation-delay: 0.2s;">
+            <div class="glass-card chart-container">
+                <div class="card-header">Target Distribution (Real vs Fake Services)</div>
+                <div class="canvas-wrapper">
+                    <canvas id="distributionChart"></canvas>
+                </div>
+            </div>
+
+            <div class="glass-card chart-container">
+                <div class="card-header">Activity Timeline</div>
+                <div class="canvas-wrapper">
+                    <canvas id="timelineChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Map Row -->
+        <div class="grid-row span-full slide-up" style="animation-delay: 0.3s;">
+            <div class="glass-card map-container">
+                <div class="card-header">Live Threat Geolocation</div>
+                <div id="map"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Core Scripts -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
