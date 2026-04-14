@@ -16,7 +16,9 @@ def analyze_logs(max_lines=5000):
     real_ips = []
     fake_ips = []
     time_series = defaultdict(int)
+    real_time_series = defaultdict(int)
     attack_classes = defaultdict(int)
+    real_attack_classes = defaultdict(int)
     raw_logs = []
     
     # Store the last attack type per IP to enrich the suspicious list
@@ -68,6 +70,8 @@ def analyze_logs(max_lines=5000):
 
                     if is_real:
                         real_ips.append(ip)
+                        real_time_series[time_key] += 1
+                        real_attack_classes[a_type] += 1
                         last_attack_type[ip] = a_type
                     elif "[FAKE]" in data:
                         fake_ips.append(ip)
@@ -116,6 +120,8 @@ def analyze_logs(max_lines=5000):
         "fake_count": dict(fake_count),
         "suspicious": suspicious,
         "time_series": dict(time_series),
+        "real_time_series": dict(real_time_series),
         "attack_classes": dict(attack_classes),
+        "real_attack_classes": dict(real_attack_classes),
         "raw_logs": list(reversed(raw_logs)) # return newest first
     }

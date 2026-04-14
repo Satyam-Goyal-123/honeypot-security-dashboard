@@ -82,6 +82,14 @@
                 <span class="pulse-ring"></span>
                 <span id="alertMessage">System Operating Normally</span>
             </div>
+
+            <div class="data-mode-control">
+                <span class="mode-label">Data Mode</span>
+                <div class="mode-toggle" role="group" aria-label="Dashboard data mode">
+                    <button id="modeLiveBtn" class="mode-btn active" data-mode="live">Live</button>
+                    <button id="modeSimBtn" class="mode-btn" data-mode="simulated">Simulated</button>
+                </div>
+            </div>
             
             <div class="system-stats">
                 <div class="stat-pill"><i data-feather="cpu"></i> CPU: <span id="sys-cpu">0%</span></div>

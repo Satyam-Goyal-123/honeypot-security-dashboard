@@ -116,19 +116,82 @@ const pulseIcon = L.divIcon({
 // ====== 4. SOCKET.IO REAL-TIME LOGIC ======
 const socket = io();
 let globalLogs = []; // Store logs for search parsing
+let latestLocations = {};
+let currentMode = 'live';
+let modeSwitchInFlight = false;
+
+const modeLiveBtn = document.getElementById('modeLiveBtn');
+const modeSimBtn = document.getElementById('modeSimBtn');
+
+function setModeButtons(mode, disabled = false) {
+    currentMode = mode;
+    modeLiveBtn.classList.toggle('active', mode === 'live');
+    modeSimBtn.classList.toggle('active', mode === 'simulated');
+    modeLiveBtn.disabled = disabled;
+    modeSimBtn.disabled = disabled;
+}
+
+async function setDataMode(mode) {
+    if (modeSwitchInFlight || mode === currentMode) return;
+    modeSwitchInFlight = true;
+    setModeButtons(currentMode, true);
+    try {
+        const res = await fetch('/api/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Unable to update mode');
+        }
+
+        const payload = await res.json();
+        setModeButtons(payload.mode || mode, false);
+        showToast(`Dashboard switched to ${payload.mode || mode} mode.`, 'warn');
+    } catch (e) {
+        setModeButtons(currentMode, false);
+        showToast(`Mode switch failed: ${e.message}`, 'danger');
+    } finally {
+        modeSwitchInFlight = false;
+    }
+}
+
+async function initDataMode() {
+    try {
+        const res = await fetch('/api/mode');
+        if (res.ok) {
+            const payload = await res.json();
+            setModeButtons(payload.mode || 'live');
+        }
+    } catch (e) {
+        // Keep default without interrupting dashboard loading.
+        setModeButtons('live');
+    }
+}
+
+modeLiveBtn.addEventListener('click', () => setDataMode('live'));
+modeSimBtn.addEventListener('click', () => setDataMode('simulated'));
+initDataMode();
 
 socket.on('dashboard_update', (d) => {
+    if (d.data_mode) {
+        setModeButtons(d.data_mode);
+    }
+
     // Top Bar Stats
     document.getElementById("kpi-events").innerText = d.rate || 0;
     
     // Calculate Active Threats & Unique
     let highThreats = 0;
-    for(let ip in d.suspicious) { if (d.suspicious[ip].severity === 'HIGH') highThreats++; }
+    for(let ip in d.suspicious) {
+        if (d.suspicious[ip].severity === 'HIGH' || d.suspicious[ip].severity === 'CRITICAL') highThreats++;
+    }
     document.getElementById("kpi-threats").innerText = highThreats;
     document.getElementById("kpi-unique").innerText = d.ips ? d.ips.length : 0;
     
     // Alive Connection Count simulation (random jitter based on unique IPs)
-    const baseConn = Math.max(1, Math.floor(d.ips.length * 0.3));
+    const baseConn = Math.max(1, Math.floor((d.ips || []).length * 0.3));
     document.getElementById("sys-conn").innerText = baseConn + Math.floor(Math.random()*3);
 
     // System Health CPU/Mem
@@ -145,7 +208,7 @@ socket.on('dashboard_update', (d) => {
         alertMessage.innerText = `CRITICAL: ${highThreats} High Severity Threats Active`;
     } else {
         alertBox.className = "alert-pill safe";
-        alertMessage.innerText = "System Operating Normally";
+        alertMessage.innerText = currentMode === 'simulated' ? "Simulated Internet Feed Active" : "System Operating Normally";
     }
 
     // Timeline Chart Update
@@ -153,6 +216,9 @@ socket.on('dashboard_update', (d) => {
     window.timelineChart.data.labels = d.time_labels;
     window.timelineChart.data.datasets[0].data = d.mock_time_values;
     window.timelineChart.data.datasets[1].data = d.real_time_values;
+    const showBaseline = currentMode === 'simulated';
+    window.timelineChart.data.datasets[0].hidden = !showBaseline;
+    window.timelineChart.data.datasets[1].label = showBaseline ? 'Simulated Internet Activity' : 'Live Attack Activity';
     window.timelineChart.update('none'); // Update without full animation for smoother real-time
 
     // Type Chart Update
@@ -178,14 +244,17 @@ socket.on('dashboard_update', (d) => {
                 </div>
             `;
         });
+    } else {
+        topHTML = `<div class="subtext">No active attackers in current mode.</div>`;
     }
     topList.innerHTML = topHTML;
 
     // Map Update
+    latestLocations = d.locations || {};
     for (let key in markers) { window.map.removeLayer(markers[key]); }
     markers = {};
-    for (let ip in d.locations) {
-        let loc = d.locations[ip];
+    for (let ip in latestLocations) {
+        let loc = latestLocations[ip];
         if (loc && loc.lat) {
             let m = L.marker([loc.lat, loc.lon], {icon: pulseIcon})
                 .addTo(window.map)
@@ -207,12 +276,14 @@ socket.on('dashboard_update', (d) => {
 
 // ====== 4.5 REAL-TIME TOASTS & EVENTS ======
 socket.on('new_attack', (data) => {
+    if (currentMode !== 'live') return;
+
     // Show toast
     showToast(`⚠ New attack from ${data.ip} (${data.type})`, data.type === 'Brute Force' ? 'danger' : 'warn');
     
     // Add ping to map strictly
-    if(window.map && d.locations && d.locations[data.ip]) {
-        let loc = d.locations[data.ip];
+    if(window.map && latestLocations && latestLocations[data.ip]) {
+        let loc = latestLocations[data.ip];
         L.circle([loc.lat, loc.lon], {
             radius: 50000, color: "red", className: "pulse-circle"
         }).addTo(window.map);
@@ -285,8 +356,8 @@ function renderThreats(suspiciousList, locations) {
         count++;
         let s = suspiciousList[ip];
         let loc = locations[ip] || {};
-        let sevClass = s.severity === 'HIGH' ? 'high-sev' : 'med-sev';
-        let color = s.severity === 'HIGH' ? 'var(--neon-crimson)' : 'var(--neon-purple)';
+        let sevClass = (s.severity === 'HIGH' || s.severity === 'CRITICAL') ? 'high-sev' : 'med-sev';
+        let color = (s.severity === 'HIGH' || s.severity === 'CRITICAL') ? 'var(--neon-crimson)' : 'var(--neon-purple)';
         
         grid.innerHTML += `
             <div class="threat-card fade-in ${sevClass}" style="cursor:pointer" onclick="openStoryModal('${ip}', '${color}', '${s.type}')">
