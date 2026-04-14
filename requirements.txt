@@ -1,2 +1,5 @@
 flask
 pandas
+flask-socketio
+eventlet
+flask-limiter

@@ -3,87 +3,243 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Honeypot Security Dashboard</title>
+    <title>NexusDefend Enterprise Dashboard</title>
 
-    <!-- Google Fonts: Outfit & Inter for premium tech look -->
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
     
-    <!-- Chart.js and Leaflet via CDN -->
+    <!-- External Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Add zoom plugin for Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+
+    <!-- UI Icons (Feather) -->
+    <script src="https://unpkg.com/feather-icons"></script>
 
     <!-- Core Styles -->
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
 
-    <!-- Dynamic Alert Banner -->
-    <div id="alertBox" class="alert-banner hidden">
-        <div class="alert-content">
-            <span class="pulse-ring"></span>
-            <span id="alertMessage">System Operating Normally</span>
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <i data-feather="shield"></i> 
+            <span>Nexus<span>Defend</span></span>
+        </div>
+        
+        <nav class="sidebar-nav">
+            <a href="#" class="nav-item active" data-target="view-dashboard">
+                <i data-feather="grid"></i> Dashboard
+            </a>
+            <a href="#" class="nav-item" data-target="view-logs">
+                <i data-feather="list"></i> Log Explorer
+            </a>
+            <a href="#" class="nav-item" data-target="view-threats">
+                <i data-feather="alert-triangle"></i> Threat Intel
+            </a>
+            <a href="#" class="nav-item locked" data-target="view-settings">
+                <i data-feather="settings"></i> Settings <i data-feather="lock" class="lock-icon"></i>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="status-indicator">
+                <span class="dot online"></span> Honeypot Online
+            </div>
+            <div class="status-detail">Port: 9999</div>
+        </div>
+    </aside>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Attack Story Modal -->
+    <div id="story-modal" class="modal hidden">
+        <div class="glass-card modal-content">
+            <div class="flex-between card-header" style="margin-bottom:0.5rem">
+                <span>Threat Origin Story: <span id="story-ip" style="color:var(--neon-crimson)">---</span></span>
+                <button id="close-story" class="glass-button" style="padding:0.2rem 0.5rem">✕</button>
+            </div>
+            <div id="story-meta" class="subtext"></div>
+            <div id="story-timeline" class="story-timeline"></div>
         </div>
     </div>
 
-    <div class="main-container">
-        <!-- Header -->
-        <header class="header slide-down">
-            <h1>Nexus<span>Defend</span></h1>
-            <p class="subtitle">Real-time Honeypot Threat Analytics</p>
+    <!-- Main Content Area -->
+    <main class="main-content">
+        
+        <!-- Top Status Bar -->
+        <header class="top-bar">
+            <div id="alertBox" class="alert-pill safe">
+                <span class="pulse-ring"></span>
+                <span id="alertMessage">System Operating Normally</span>
+            </div>
+            
+            <div class="system-stats">
+                <div class="stat-pill"><i data-feather="cpu"></i> CPU: <span id="sys-cpu">0%</span></div>
+                <div class="stat-pill"><i data-feather="server"></i> RAM: <span id="sys-mem">0%</span></div>
+                <div class="stat-pill"><i data-feather="clock"></i> Uptime: <span id="sys-uptime">24h 12m</span></div>
+                <div class="stat-pill"><i data-feather="activity"></i> Conn: <span id="sys-conn">0</span></div>
+            </div>
         </header>
 
-        <!-- Metrics Row -->
-        <div class="grid-row metrics slide-up" style="animation-delay: 0.1s;">
-            <div class="glass-card stat-card glow-cyan">
-                <h3>Total Attack Events</h3>
-                <div class="value-large" id="rate">0</div>
-                <div class="subtext">in the last hour</div>
+        <!-- VIEW: DASHBOARD -->
+        <section id="view-dashboard" class="view-section active fade-in">
+            <!-- KPI Cards -->
+            <div class="grid-row metrics">
+                <div class="glass-card stat-card glow-cyan">
+                    <h3>Active Threats</h3>
+                    <div class="value-large" id="kpi-threats">0</div>
+                    <div class="subtext">Flagged IP Addresses</div>
+                </div>
+
+                <div class="glass-card stat-card glow-emerald">
+                    <h3>Blocked Attempts</h3>
+                    <div class="value-large" id="kpi-events">0</div>
+                    <div class="subtext">Across all monitored ports</div>
+                </div>
+                
+                <div class="glass-card stat-card glow-purple">
+                    <h3>Unique Attackers</h3>
+                    <div class="value-large" id="kpi-unique">0</div>
+                    <div class="subtext">Within local honeypot registry</div>
+                </div>
             </div>
 
-            <div class="glass-card stat-card glow-emerald">
-                <h3>Top Attackers</h3>
-                <div id="top-attackers" class="top-list">
-                    <!-- Dynamic List -->
+            <!-- Charts Row 1 -->
+            <div class="grid-row charts">
+                <div class="glass-card chart-container span-large">
+                    <div class="card-header">
+                        Real-Time Attack Timeline 
+                        <span class="header-badge">Scroll to Zoom</span>
+                    </div>
+                    <div class="canvas-wrapper">
+                        <canvas id="timelineChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="glass-card chart-container span-small">
+                    <div class="card-header">Attack Classification</div>
+                    <div class="canvas-wrapper pie-wrapper">
+                        <canvas id="typeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 2: Map & Top Attackers -->
+            <div class="grid-row map-row">
+                <div class="glass-card map-container">
+                    <div class="card-header">Live Threat Geolocation</div>
+                    <div id="map"></div>
+                </div>
+
+                <div class="glass-card top-attackers-container">
+                    <div class="card-header">Top Attackers</div>
+                    <div id="top-attackers" class="top-list">
+                        <!-- Dynamic List -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW: LOG EXPLORER -->
+        <section id="view-logs" class="view-section hidden">
+            <div class="glass-card full-height">
+                <div class="card-header flex-between">
+                    <span>Raw Event Logs</span>
+                    <div class="log-controls">
+                        <input type="text" id="logSearch" placeholder="Search IP or Payload..." class="glass-input">
+                        <select id="logFilterType" class="glass-select">
+                            <option value="All">All Types</option>
+                            <option value="Brute Force">Brute Force</option>
+                            <option value="Malware">Malware</option>
+                            <option value="Scanning">Scanning</option>
+                        </select>
+                        <select id="logFilterOrigin" class="glass-select">
+                            <option value="All">All Origins</option>
+                            <option value="true">Real Attacks</option>
+                            <option value="false">Simulated (Fake)</option>
+                        </select>
+                        <button class="glass-button glow-cyan" onclick="window.location.href='/export'" style="padding: 0.5rem 1rem">
+                            <i data-feather="download" style="width:14px; height:14px;"></i> Export CSV
+                        </button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="glass-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp <i data-feather="chevron-down" style="width:12px;cursor:pointer" id="sortTime"></i></th>
+                                <th>IP Address</th>
+                                <th>Class</th>
+                                <th>Payload Match</th>
+                                <th>Target</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logTableBody">
+                            <!-- Logs injected here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW: THREATS -->
+        <section id="view-threats" class="view-section hidden">
+            <div class="glass-card full-height">
+                <div class="card-header">High Severity Threat Intelligence</div>
+                <div class="threat-grid" id="threatGrid">
+                    <!-- Threat Cards injected here -->
+                </div>
+            </div>
+        </section>
+        
+        <!-- VIEW: SETTINGS (Locked) -->
+        <section id="view-settings" class="view-section hidden">
+            <div class="glass-card locked-card">
+                <i data-feather="lock" class="giant-lock"></i>
+                <h2>Admin Authentication Required</h2>
+                <p>Please log in to change honeypot configuration, toggle server binding, or manage rate limits.</p>
+                <div class="login-form">
+                    <input type="password" id="adminPassword" placeholder="Enter System Password" class="glass-input">
+                    <button class="glass-button glow-cyan" onclick="unlockSettings()">Authenticate</button>
+                    <p id="loginError" class="error-text hidden">Invalid credentials</p>
                 </div>
             </div>
             
-            <div class="glass-card stat-card glow-crimson">
-                <h3>Threat Level</h3>
-                <div class="value-large threat-level" id="threat-level">LOW</div>
-                <div class="subtext">Based on unusual activity spikes</div>
-            </div>
-        </div>
-
-        <!-- Charts Row -->
-        <div class="grid-row charts slide-up" style="animation-delay: 0.2s;">
-            <div class="glass-card chart-container">
-                <div class="card-header">Target Distribution (Real vs Fake Services)</div>
-                <div class="canvas-wrapper">
-                    <canvas id="distributionChart"></canvas>
+            <div class="glass-card settings-panel hidden" id="settingsPanel">
+                <div class="card-header">System Configuration</div>
+                <div class="settings-grid">
+                    <div class="setting-item">
+                        <label>Honeypot Service Bind</label>
+                        <select class="glass-select"><option>0.0.0.0 (Public)</option><option>127.0.0.1 (Local)</option></select>
+                    </div>
+                    <div class="setting-item">
+                        <label>Honeypot Port</label>
+                        <input type="number" id="configPort" value="9999" class="glass-input">
+                    </div>
+                    <div class="setting-item">
+                        <label>Rate Limiting Rules</label>
+                        <select class="glass-select"><option>Strict (5/min)</option><option>Standard (20/min)</option></select>
+                    </div>
+                    <button id="configPurgeBtn" class="glass-button glow-crimson reset-btn">Purge All Logs</button>
+                    <button id="configSaveBtn" class="glass-button glow-emerald save-btn">Commit Changes</button>
                 </div>
             </div>
+        </section>
 
-            <div class="glass-card chart-container">
-                <div class="card-header">Activity Timeline</div>
-                <div class="canvas-wrapper">
-                    <canvas id="timelineChart"></canvas>
-                </div>
-            </div>
-        </div>
-
-        <!-- Map Row -->
-        <div class="grid-row span-full slide-up" style="animation-delay: 0.3s;">
-            <div class="glass-card map-container">
-                <div class="card-header">Live Threat Geolocation</div>
-                <div id="map"></div>
-            </div>
-        </div>
-    </div>
+    </main>
 
     <!-- Core Scripts -->
+    <script>feather.replace();</script>
     <script src="/static/js/app.js"></script>
 </body>
 </html>
